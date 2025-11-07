@@ -6,4 +6,6 @@ test.bat
 test*
 *.bin
 
+./*.ipynb
+
 *.ipynb

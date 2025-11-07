@@ -29,7 +29,7 @@ int raw2scatters(const std::vector<std::string>& rawfiles, const std::string cry
     const std::vector<std::string>& crystals_calibration_files, const std::string process_type);
 int raw2clusters(const std::vector<std::string> rawfiles, const std::string crystals_cluster_folder,
     const std::vector<std::string> crystals_calibration_files, const std::vector<std::string> crystals_threshold_files,
-    const bool plot_frames_and_prevent_clear);
+    const bool plot_frames_and_prevent_clear, const bool extended_mode);
 
 // string format
 // template <typename... Args>

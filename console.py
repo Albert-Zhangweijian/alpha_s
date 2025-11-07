@@ -25,7 +25,6 @@ crystals_frames_folder = str(crystals_frames_folder)
 crystals_scatters_folder = rawfolder / "crystals_scatters"
 crystals_scatters_folder = str(crystals_scatters_folder)
 
-
 clustering_mode = "random"
 
 # raw2frames(rawfiles[:1], crystals_frames_folder, cwd=r"F:\alpha\matlab\select_clusters\cpp_plugins")

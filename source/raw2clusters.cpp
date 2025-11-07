@@ -68,7 +68,8 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
     const uint8_t* pixels_isvalids,
     const float* pixels_thresholds,
     const float* pixels_secondary_thresholds,
-    const int& global_start_frame_id) {
+    const int& global_start_frame_id,
+    const bool extended_mode) {
 
     // distribute the frames to different threads
     int n_frames_per_thread = n_frames / global_config["N_THREADS"][0];
@@ -118,7 +119,7 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
 
                     if (!pixels_ischeckeds[adjacent_pixel_id]) {
                         active_pixel_ids.push_back(adjacent_pixel_id); // if not checked, then add to the cluster
-                        add_adjacent_pixels(adjacent_pixel_id, adjacent_pixel_ids, pixels_ischeckeds, true); // and add its adjacent pixels to the list of adjacent pixels
+                        add_adjacent_pixels(adjacent_pixel_id, adjacent_pixel_ids, pixels_ischeckeds, false); // and add its adjacent pixels to the list of adjacent pixels
                         pixels_ischeckeds[adjacent_pixel_id] = true;  // and set it to be checked
                     }
                 }
@@ -136,10 +137,12 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
                 float total_energy = 0;
 
                 // // add all neighboring pixels
-                std::vector<bool> blank_pixels_ischeckeds(global_config["N_PIXELS"][0], false);
-                for (auto& active_pixel_id : active_pixel_ids) blank_pixels_ischeckeds[active_pixel_id] = true;
-                for (auto& active_pixel_id : active_pixel_ids)
-                    add_adjacent_pixels(active_pixel_id, active_pixel_ids, blank_pixels_ischeckeds, true);
+                if (extended_mode) {
+                    std::vector<bool> blank_pixels_ischeckeds(global_config["N_PIXELS"][0], false);
+                    for (auto& active_pixel_id : active_pixel_ids) blank_pixels_ischeckeds[active_pixel_id] = true;
+                    for (auto& active_pixel_id : active_pixel_ids)
+                        add_adjacent_pixels(active_pixel_id, active_pixel_ids, blank_pixels_ischeckeds, true);
+                }
 
                 for (auto& active_pixel_id : active_pixel_ids) {
                     adus.push_back(frame_image[active_pixel_id]);
@@ -171,7 +174,7 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
 }
 
 
-int save_clusters(const std::string filename, const std::vector<Cluster> &clusters, bool append) {
+int save_clusters(const std::string filename, const std::vector<Cluster> &clusters, int pixel_n, bool append) {
 
     if (!append)  // if not in append mode, then remove the file if it exists
         std::remove(filename.c_str());
@@ -182,6 +185,7 @@ int save_clusters(const std::string filename, const std::vector<Cluster> &cluste
     for (const auto& cluster : clusters) {
 
         size_t num_pixels = cluster.pixel_ids.size();
+        if (pixel_n > 0 && num_pixels != static_cast<size_t>(pixel_n)) continue;
         std::vector<uint16_t> pixel_ids_uint16(cluster.pixel_ids.begin(), cluster.pixel_ids.end()); // this is to make sure the memory alignment, since there are equal number of pixel_ids and adus
         file.write(reinterpret_cast<const char*>(&cluster.frame_id), 4); // int, 4 bytes
         file.write(reinterpret_cast<const char*>(&num_pixels), 4); // int, 4 bytes
@@ -196,7 +200,7 @@ int save_clusters(const std::string filename, const std::vector<Cluster> &cluste
 }
 
 int raw2clusters(const std::vector<std::string> rawfiles, const std::string crystals_cluster_folder,
-    const std::vector<std::string> crystals_calibration_files, const std::vector<std::string> crystals_threshold_files, const bool clear_file) {
+    const std::vector<std::string> crystals_calibration_files, const std::vector<std::string> crystals_threshold_files, const bool clear_file, const bool extended_mode) {
 
     // create output folder if not exists
     if (!std::filesystem::exists(crystals_cluster_folder))
@@ -235,8 +239,12 @@ int raw2clusters(const std::vector<std::string> rawfiles, const std::string crys
     // since the clusters can be very large. we need to use append mode to write them into files.
     for (int crystal_id = 0; crystal_id < global_config["N_CRYSTALS"][0]; crystal_id++) {
         if (crystals_calibration_files[crystal_id] == "skip") continue;
-        std::string cluster_file = format_string("{}\\clusters_crystal_{}.bin", crystals_cluster_folder, crystal_id);
-        if (clear_file) std::ofstream file(cluster_file, std::ios::binary | std::ios::trunc); // 清空文件
+        for (int pixel_n = 0; pixel_n < 10; pixel_n++) {
+            std::string cluster_file = format_string("{}\\clusters_crystal_{}_pixel_{}.bin", crystals_cluster_folder, crystal_id, pixel_n);
+            if (extended_mode)
+                cluster_file = format_string("{}\\clusters_crystal_{}_pixel_{}_extended.bin", crystals_cluster_folder, crystal_id, pixel_n);
+            if (clear_file) std::ofstream file(cluster_file, std::ios::binary | std::ios::trunc); // 清空文件
+        }
     }
 
     // define the data container for frames images (flat)
@@ -279,16 +287,22 @@ int raw2clusters(const std::vector<std::string> rawfiles, const std::string crys
                 std::vector<Cluster> file_crystal_clusters = read_frames_images_to_clusters(
                     frames_ptr, frames_in_chunk, calib0.data(), calib1.data(),
                     crystals_pixels_isvalids[crystal_id].data(), crystals_pixels_thresholds[crystal_id].data(),
-                    crystals_pixels_secondary_thresholds[crystal_id].data(), start_frame_id);
+                    crystals_pixels_secondary_thresholds[crystal_id].data(), start_frame_id, extended_mode);
                 crystals_clusters[crystal_id].insert(crystals_clusters[crystal_id].end(), file_crystal_clusters.begin(), file_crystal_clusters.end());
             }
 
             for (int crystal_id = 0; crystal_id < global_config["N_CRYSTALS"][0]; crystal_id++) {
                 if (crystals_calibration_files[crystal_id] == "skip") continue;
                 std::string cluster_file = format_string("{}\\clusters_crystal_{}.bin", crystals_cluster_folder, crystal_id);
-                save_clusters(cluster_file, crystals_clusters[crystal_id], true);
+                for (int pixel_n = 1; pixel_n <= 9; pixel_n++) {
+                    std::string cluster_file = format_string("{}\\clusters_crystal_{}_pixel_{}.bin", crystals_cluster_folder, crystal_id, pixel_n);
+                    if (extended_mode)
+                        cluster_file = format_string("{}\\clusters_crystal_{}_pixel_{}_extended.bin", crystals_cluster_folder, crystal_id, pixel_n);
+                    save_clusters(cluster_file, crystals_clusters[crystal_id], pixel_n, true);
+                }
                 crystals_clusters[crystal_id].clear();
             }
+
         }
     }
     return 0;

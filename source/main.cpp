@@ -119,12 +119,14 @@ int main(int argc, char* argv[]) {
         std::vector<std::string> crystals_calibration_files;
         std::vector<std::string> crystals_threshold_files;
         std::string crystals_cluster_folder;
+        bool extended_mode = false;
 
         options.add_options()
             ("i,input", "Raw input files", cxxopts::value<std::vector<std::string>>(rawfiles))
             ("c,calibration", "Use calibration files", cxxopts::value<std::vector<std::string>>(crystals_calibration_files))
             ("t,threshold", "Use threshold files", cxxopts::value<std::vector<std::string>>(crystals_threshold_files))
             ("o,output", "Output folder", cxxopts::value<std::string>(crystals_cluster_folder)->default_value("clusters"))
+            ("e,extended", "Extended mode", cxxopts::value<bool>(extended_mode)->default_value("false"))
             ("h,help", "Print usage");
         options.parse_positional({"input", "calibration", "threshold"});
         auto result = options.parse(args.size(), args.data());
@@ -143,10 +145,11 @@ int main(int argc, char* argv[]) {
         for (const auto& file : crystals_threshold_files)
             std::cout << "- [" << file << "]" << std::endl;
         std::cout << "Output: " << crystals_cluster_folder << "\n";
+        std::cout << "Extended mode: " << (extended_mode ? "true" : "false") << "\n";
 
 
         raw2clusters(rawfiles, crystals_cluster_folder,
-            crystals_calibration_files, crystals_threshold_files, true);
+            crystals_calibration_files, crystals_threshold_files, true, extended_mode);
 
         return 0;
     }
