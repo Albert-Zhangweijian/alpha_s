@@ -1,0 +1,9 @@
+.vscode/
+build/
+
+alpha.exe
+test.bat
+test*
+*.bin
+
+*.ipynb
