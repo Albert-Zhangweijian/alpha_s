@@ -7,19 +7,23 @@
 
 int main(int argc, char* argv[]) {
 
-    if (argc < 2) {
+    if (argc <= 2) {
         std::cout << "Usage: " << argv[0] << " <command> [options]\n";
         std::cout << "Available commands: raw2spectra, raw2scatters, and raw2clusters\n";
         return 0;
     }
 
-    std::string command = argv[1];  // the first is the subcommand
-    std::vector<char*> args(argv + 2, argv + argc); // the remaining arguments
-    std::cout << "Executing command: " << command << "\n" << std::endl;
+    // Check for config argument
+    std::string config_filepath = "config.txt";
+    if (std::string(argv[1]) == "--config")
+        config_filepath = argv[2];
+    global_config = read_config(config_filepath, false);
     
-    global_config = read_config("config.txt", false);
-    
-
+    // Shift arguments if config is provided
+    int shift = (std::string(argv[1]) == "--config") ? 2 : 0;
+    std::string command = argv[1 + shift];  // the first is the subcommand
+    std::vector<char*> args(argv + 2 + shift, argv + argc); // the remaining arguments
+    std::cout << "Executing command: " << command << " with config file: " << config_filepath << "\n" << std::endl;
 
     if (command == "raw2frames") {
 
@@ -46,7 +50,7 @@ int main(int argc, char* argv[]) {
         raw2frames(rawfiles, crystals_frames_folder);
 
         return 0;
-    } 
+    }
 
     if (command == "raw2spectra") {
 
@@ -126,7 +130,7 @@ int main(int argc, char* argv[]) {
             ("c,calibration", "Use calibration files", cxxopts::value<std::vector<std::string>>(crystals_calibration_files))
             ("t,threshold", "Use threshold files", cxxopts::value<std::vector<std::string>>(crystals_threshold_files))
             ("o,output", "Output folder", cxxopts::value<std::string>(crystals_cluster_folder)->default_value("clusters"))
-            ("e,extended", "Extended mode", cxxopts::value<bool>(extended_mode)->default_value("false"))
+            ("e,extended_mode", "Enable output exteneded clusters", cxxopts::value<bool>(extended_mode)->default_value("false")->implicit_value("true"))
             ("h,help", "Print usage");
         options.parse_positional({"input", "calibration", "threshold"});
         auto result = options.parse(args.size(), args.data());
@@ -153,6 +157,90 @@ int main(int argc, char* argv[]) {
 
         return 0;
     }
+
+    // if (command == "instant") {
+
+    //     cxxopts::Options options("alpha instant", "Instant read from rawfiles");
+    //     std::vector<std::string> rawfiles;
+    //     int crystal_id;
+    //     int row;
+    //     int col;
+    //     std::string type;
+    //     std::string output_folder;
+
+    //     options.add_options()
+    //         ("i,input", "Raw input files", cxxopts::value<std::vector<std::string>>(rawfiles))
+    //         ("crystal_id", "Crystal ID", cxxopts::value<int>(crystal_id))
+    //         ("row", "Row index", cxxopts::value<int>(row))
+    //         ("col", "Column index", cxxopts::value<int>(col))
+    //         ("t,type", "Data type (e.g., 'spectrum', 'scatter')", cxxopts::value<std::string>(type))
+    //         ("o,output", "Output folder", cxxopts::value<std::string>(output_folder)->default_value("instant_output"))
+    //         ("h,help", "Print usage");
+    //     options.parse_positional({"input", "crystal_id", "row", "col"});
+    //     auto result = options.parse(args.size(), args.data());
+    //     if (result.count("help")) {
+    //         std::cout << options.help() << std::endl;
+    //         return 0;
+    //     }
+
+    //     std::cout << "Found " << rawfiles.size() << " raw files:" << std::endl;
+    //     for (const auto& file : rawfiles)
+    //         std::cout << "- [" << file << "]" << std::endl;
+    //     std::cout << "Crystal ID: " << crystal_id << "\n";
+    //     std::cout << "Row: " << row << "\n";
+    //     std::cout << "Column: " << col << "\n";
+    //     std::cout << "Type: " << type << "\n";
+    //     std::cout << "Output folder: " << output_folder << "\n";
+
+    //     instant_read(rawfiles, crystal_id, row, col, type, output_folder);
+
+    //     return 0;
+    // } 
+
+    if (command == "instant") {
+
+        cxxopts::Options options("alpha instant", "Instant read from rawfiles");
+        std::vector<std::string> rawfiles;
+        std::vector<int> crystal_ids;
+        std::vector<int> rows;
+        std::vector<int> cols;
+        std::string type;
+        std::string output_folder;
+
+        options.add_options()
+            ("i,input", "Raw input files", cxxopts::value<std::vector<std::string>>(rawfiles))
+            ("crystal_ids", "Crystal IDs", cxxopts::value<std::vector<int>>(crystal_ids))
+            ("rows", "Row indices", cxxopts::value<std::vector<int>>(rows))
+            ("cols", "Column indices", cxxopts::value<std::vector<int>>(cols))
+            ("t,type", "Data type (e.g., 'spectrum', 'scatter')", cxxopts::value<std::string>(type))
+            ("o,output", "Output folder", cxxopts::value<std::string>(output_folder)->default_value("instant_output"))
+            ("h,help", "Print usage");
+        options.parse_positional({"input", "crystal_ids", "rows", "cols"});
+        auto result = options.parse(args.size(), args.data());
+        if (result.count("help")) {
+            std::cout << options.help() << std::endl;
+            return 0;
+        }
+
+        std::cout << "Found " << rawfiles.size() << " raw files:" << std::endl;
+        for (const auto& file : rawfiles)
+            std::cout << "- [" << file << "]" << std::endl;
+        std::cout << "Crystal IDs: ";
+        for (const auto& id : crystal_ids) std::cout << id << " ";
+        std::cout << "\n";
+        std::cout << "Rows: ";
+        for (const auto& r : rows) std::cout << r << " ";
+        std::cout << "\n";
+        std::cout << "Columns: ";
+        for (const auto& c : cols) std::cout << c << " ";
+        std::cout << "\n";
+        std::cout << "Type: " << type << "\n";
+        std::cout << "Output folder: " << output_folder << "\n";
+
+        instant_read_batch(rawfiles, crystal_ids, rows, cols, type, output_folder);
+
+        return 0;
+    }    
 
     std::cout << "Unknown command: " << command << "\n";
     std::cout << "Available commands: raw2spectra, raw2scatters, and raw2clusters\n";

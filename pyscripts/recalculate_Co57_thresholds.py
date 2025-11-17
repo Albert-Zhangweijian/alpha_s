@@ -33,7 +33,6 @@ new_pixels_calibration = np.vstack((pixels_gain, pixels_offset)).T
 #     f.create_dataset('pixels_calibrations', data=new_pixels_calibration)
 
 
-
 for pixel_id in range(pixels_spectra.shape[0]):
     erg_bins = bins * new_pixels_calibration[pixel_id, 0] + new_pixels_calibration[pixel_id, 1]
     print(f"Counts lower than 5 eV per pixel is {counts_lower_than_5kev[pixel_id]}, ratio is {counts_lower_than_5kev[pixel_id] / counts_lower_than_10kev[pixel_id]}")

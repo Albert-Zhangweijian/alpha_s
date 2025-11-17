@@ -1,4 +1,4 @@
-from pyscripts.read_clusters import read_clusters, write_clusters
+from pyscripts.lib.read_clusters import read_clusters, write_clusters
 
 Co57_calibration_filepath = r"H:\alpha_spect_mini\calibration_results\panel_1\Co57_pixels_calibration_crystal_0.h5"
 import h5py

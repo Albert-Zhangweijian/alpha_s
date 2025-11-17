@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+from scipy.ndimage import convolve1d
 
 def generate_centroid_kernel(kernel_half_length):
     if kernel_half_length == 0:
@@ -48,34 +48,52 @@ def generate_1d_savitzky_kernel(kernel_half_length):
         return np.array([-0.025000, -0.021429, -0.017857, -0.014286, -0.010714, -0.007143, -0.003571, 0.0, 0.003571, 0.007143, 0.010714, 0.014286, 0.017857, 0.021429, 0.025000], dtype=float)
     raise ValueError("Unsupported kernel_half_length(not tabulated): {}".format(kernel_half_length))
 
-def find_peaks(bins, spectrum, n_peaks, kernel_half_length=3, neglected_bins=200, high_end_neglected_bins=200, peak_distance=5, verbose=False):
+def find_peaks(bins, spectrum, n_peaks, smooth_kernel_half_length=3, savitzky_kernel_half_length=3, neglected_bins=200, high_end_neglected_bins=200, peak_distance=5, verbose=False):
 
     assert n_peaks > 0
-    assert kernel_half_length > 0
     assert peak_distance > 0
 
-    spectrum = np.squeeze(spectrum)
-    peaks_indices = np.zeros((n_peaks), dtype=int)
-    centroid_kernel = generate_centroid_kernel(kernel_half_length)
-    savitzky_kernel = generate_1d_savitzky_kernel(kernel_half_length)
-    ymax = np.max(spectrum[neglected_bins:])  # to ignore the low-energy noise peak
+    peaks_indices = np.zeros((spectrum.shape[0], n_peaks), dtype=int)
+    centroid_kernel = generate_centroid_kernel(smooth_kernel_half_length)
+    savitzky_kernel = generate_1d_savitzky_kernel(savitzky_kernel_half_length)
+    ymax = np.max(spectrum[:, neglected_bins:])  # to ignore the low-energy noise peak
 
     # smooth the spectrum with Savitzky-Golay filter
-    smoothed_spectrum = np.convolve(spectrum, centroid_kernel, mode='same')
-    convolved_spectrum = np.convolve(smoothed_spectrum, savitzky_kernel, mode='same')
+    smoothed_spectrum = convolve1d(spectrum, centroid_kernel, axis=-1, mode='constant')
+    convolved_spectrum = convolve1d(smoothed_spectrum, savitzky_kernel, axis=-1, mode='constant')
 
-    check_start_index = neglected_bins
+    # check_start_index = np.zeros(spectrum.shape[0], dtype=int) + neglected_bins
+    # for peak_i in range(n_peaks):
+    #     convolved_spectrum_copy = np.copy(convolved_spectrum)
+    #     for pixel_i in range(spectrum.shape[0]):
+    #         convolved_spectrum_copy[pixel_i, 0:check_start_index[pixel_i]] = 1E5  # mask the area before check_start_index
+    #     peak_index = np.argmin(convolved_spectrum_copy, axis=1)
+    #     peaks_indices[:, peak_i] = peak_index + kernel_half_length  # adjust for the kernel shift
+    #     check_start_index = peak_index + peak_distance
+    #     check_start_index[peak_index+peak_distance >= (spectrum.shape[1] - high_end_neglected_bins)] = len(spectrum) - high_end_neglected_bins - 1
+
+    convolved_spectrum_copy = np.copy(convolved_spectrum)
+    convolved_spectrum_copy[:, :neglected_bins] = 0  # mask the area before neglected_bins
+    convolved_spectrum_copy[:, spectrum.shape[1]-high_end_neglected_bins:] = 0  # mask the area after high_end_neglected_bins
+
     for peak_i in range(n_peaks):
-        peak_index = np.argmin(convolved_spectrum[check_start_index:len(spectrum)-high_end_neglected_bins]) + check_start_index
-        peaks_indices[peak_i] = peak_index + kernel_half_length  # adjust for the kernel shift
-        check_start_index = peak_index + peak_distance if peak_index + peak_distance < (len(spectrum) - high_end_neglected_bins) else (len(spectrum) - high_end_neglected_bins - 1)
+        peak_index = np.argmax(convolved_spectrum_copy, axis=1)
+        peaks_indices[:, peak_i] = peak_index - savitzky_kernel_half_length / 2 # adjust for the kernel shift
+        left_mask_indices = peak_index - peak_distance
+        left_mask_indices[left_mask_indices < neglected_bins] = neglected_bins
+        right_mask_indices = peak_index + peak_distance + 1
+        right_mask_indices[right_mask_indices > spectrum.shape[1] - high_end_neglected_bins] = spectrum.shape[1] - high_end_neglected_bins
+        for i in range(spectrum.shape[0]):
+            convolved_spectrum_copy[i, left_mask_indices[i]:right_mask_indices[i]] = 0
+    peaks_indices = np.sort(peaks_indices, axis=1)
 
-    if verbose:
+
+    if verbose and spectrum.shape[0] == 1:
         plt.figure(figsize=(10, 6))
-        plt.plot(bins, spectrum, label='Spectrum', linestyle='none', marker='.', color='blue', markersize=4)
-        plt.plot(bins, smoothed_spectrum, label='Smoothed Spectrum', linestyle='-', color='orange')
-        plt.plot(bins, convolved_spectrum, label='Convolved Spectrum', linestyle='-', color='green')
-        plt.scatter(bins[peaks_indices], spectrum[peaks_indices], color='red', label='Detected Peaks', marker='d')
+        plt.plot(bins,np.squeeze(spectrum), label='Spectrum', linestyle='none', marker='.', color='blue', markersize=4)
+        plt.plot(bins, np.squeeze(smoothed_spectrum), label='Smoothed Spectrum', linestyle='-', color='orange')
+        plt.plot(bins, np.squeeze(convolved_spectrum), label='Convolved Spectrum', linestyle='-', color='green')
+        plt.scatter(bins[peaks_indices], spectrum[0, peaks_indices], color='red', label='Detected Peaks', marker='d')
         plt.axvline(x=bins[neglected_bins], color='green', linestyle='--', label='Neglected Bins Start')
         plt.axvline(x=bins[len(spectrum) - high_end_neglected_bins], color='green', linestyle='--', label='Neglected Bins End')
         plt.title(f'Spectrum with Detected Peaks')

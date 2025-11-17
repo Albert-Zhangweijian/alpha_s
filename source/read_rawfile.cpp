@@ -84,6 +84,15 @@ int read_rawfile_to_crystals_frames_images(const std::string& rawfile, const int
         pixel_order_vec.data()
     );
 
+    // retrive the only filename from the path
+    size_t last_slash_idx = rawfile.find_last_of("\\/");
+    std::string filename;
+    if (std::string::npos != last_slash_idx) {
+        filename = rawfile.substr(last_slash_idx + 1);
+    } else {
+        filename = rawfile;
+    }
+
     // 预分配三维存储结构
     int n_frames_to_read = end_frame_id - start_frame_id;
     const size_t n_frame_pixels = global_config["N_CRYSTALS"][0] * global_config["N_PIXELS_PREMERGE"][0];
@@ -125,11 +134,11 @@ int read_rawfile_to_crystals_frames_images(const std::string& rawfile, const int
         }
 
         // 进度显示
-        std::cout << format_string("\rReading {} frames ({}%) from file {}", n_readed_frames + n_current_chunk_frames, (n_readed_frames + n_current_chunk_frames)*100.0/n_frames_to_read, rawfile) << std::flush;
+        std::cout << format_string("\rReading {} frames ({}%) from file {}", n_readed_frames + n_current_chunk_frames, (n_readed_frames + n_current_chunk_frames)*100.0/n_frames_to_read, filename) << std::flush;
     }
     auto end_time = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double> elapsed = end_time - start_time;
-    std::cout << format_string("\nFinished {} frames ({}%) from file {},  {} s elapsed. IO speed = {} Mb/s", n_frames_to_read, (n_frames_to_read)*100.0/n_frames_to_read, rawfile, elapsed.count(), (n_frames_to_read * n_frame_pixels * sizeof(uint16_t)) / elapsed.count() / (1024 * 1024)) << std::endl;
+    std::cout << format_string("\nFinished {} frames ({}%) from file {},  {} s elapsed. IO speed = {} Mb/s", n_frames_to_read, (n_frames_to_read)*100.0/n_frames_to_read, filename, elapsed.count(), (n_frames_to_read * n_frame_pixels * sizeof(uint16_t)) / elapsed.count() / (1024 * 1024)) << std::endl;
     file.close();
 
     // set crystals_frames_images to zero if not all frames are read

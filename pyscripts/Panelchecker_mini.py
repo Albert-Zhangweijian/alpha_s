@@ -6,7 +6,7 @@ import re
 import matplotlib.pyplot as plt
 from matplotlib.collections import LineCollection
 
-from pyscripts.CrystalChecker_lib import InteractiveCrystalChecker
+from pyscripts.lib.CrystalChecker_lib import InteractiveCrystalChecker
 
 #%% Alpha spect mini with old calibration data
 

@@ -21,7 +21,7 @@ struct Cluster {
 
 
 // For one pixel, add its adjacent pixels to the list of adjacent pixels if they are not already checked
-int add_adjacent_pixels(int pixel_id, std::vector<int> &adjacent_pixel_ids, const std::vector<bool> &pixels_ischeckeds, bool include_diagonal) {
+int add_adjacent_pixels(int pixel_id, std::vector<int> &adjacent_pixel_ids, const std::vector<char> &pixels_ischeckeds, bool include_diagonal) {
 
     std::vector<int> candidate_adjacent_pixel_ids;
     if (include_diagonal) {
@@ -63,8 +63,8 @@ int add_adjacent_pixels(int pixel_id, std::vector<int> &adjacent_pixel_ids, cons
 
 std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_images,
     int n_frames,
-    const float* calib0,
-    const float* calib1,
+    const float* pixels_slopes,
+    const float* pixels_offsets,
     const uint8_t* pixels_isvalids,
     const float* pixels_thresholds,
     const float* pixels_secondary_thresholds,
@@ -80,7 +80,7 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
 
     // find clusters in each frame in parallel
     std::vector<std::vector<Cluster>> threads_clusters(global_config["N_THREADS"][0]);
-    #pragma omp parallel num_threads (global_config["N_THREADS"][0]) shared(start_frame_ids, calib0, calib1, pixels_isvalids, pixels_thresholds)
+    #pragma omp parallel num_threads (global_config["N_THREADS"][0]) shared(start_frame_ids, pixels_slopes, pixels_offsets, pixels_isvalids, pixels_thresholds)
     {
         auto start_time = std::chrono::high_resolution_clock::now();
 
@@ -89,7 +89,8 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
         int start_frame_id = start_frame_ids[thread_id];
         int end_frame_id = start_frame_ids[thread_id + 1];
 
-        std::vector<bool> pixels_ischeckeds(global_config["N_PIXELS"][0], false);
+        // std::vector<bool> pixels_ischeckeds(global_config["N_PIXELS"][0], false);
+        std::vector<char> pixels_ischeckeds(global_config["N_PIXELS"][0], 0);
         for (int frame_id = start_frame_id; frame_id < end_frame_id; frame_id++) {
 
             // get the frame image and set the bad pixels to be already checked
@@ -105,8 +106,6 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
                 // so we do not set it to be checked
                 if (pixels_ischeckeds[pixel_id])
                     continue;
-
-                // std::cout << pixel_id << " " << frame_image[pixel_id] << " " << pixels_thresholds[pixel_id] << " " << pixels_secondary_thresholds[pixel_id] << std::endl;
 
                 // we first locate the center pixel, then put it into adjacent_pixel_ids
                 // when the vector is not empty, we will pop the first element and check it
@@ -124,6 +123,16 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
                     }
                 }
 
+                // check if the cluster meets the secondary threshold requirement
+                bool meets_secondary_threshold = false;
+                for (auto& active_pixel_id : active_pixel_ids) {
+                    if (frame_image[active_pixel_id] >= pixels_secondary_thresholds[active_pixel_id]) {
+                        meets_secondary_threshold = true;
+                        break;
+                    }
+                }
+                if (!meets_secondary_threshold) continue;
+
                 // calculate energy
                 // we should include a layer of calculation to expand the cluster a little bit
                 // to include adjacent pixels ADU may not be that large for the clustering, but necessary for the charge sharing
@@ -138,7 +147,7 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
 
                 // // add all neighboring pixels
                 if (extended_mode) {
-                    std::vector<bool> blank_pixels_ischeckeds(global_config["N_PIXELS"][0], false);
+                    std::vector<char> blank_pixels_ischeckeds(global_config["N_PIXELS"][0], false);
                     for (auto& active_pixel_id : active_pixel_ids) blank_pixels_ischeckeds[active_pixel_id] = true;
                     for (auto& active_pixel_id : active_pixel_ids)
                         add_adjacent_pixels(active_pixel_id, active_pixel_ids, blank_pixels_ischeckeds, true);
@@ -146,7 +155,7 @@ std::vector<Cluster> read_frames_images_to_clusters(const uint16_t* frames_image
 
                 for (auto& active_pixel_id : active_pixel_ids) {
                     adus.push_back(frame_image[active_pixel_id]);
-                    float energy = calib0[active_pixel_id] * frame_image[active_pixel_id] + calib1[active_pixel_id];
+                    float energy = pixels_slopes[active_pixel_id] * frame_image[active_pixel_id] + pixels_offsets[active_pixel_id];
                     energy = energy > 0 ? energy : 0;
                     total_energy += energy;
                     energies.push_back(energy);
@@ -228,18 +237,15 @@ int raw2clusters(const std::vector<std::string> rawfiles, const std::string crys
 
         // calculate secondary thresholds
         for (int pixel_id = 0; pixel_id < global_config["N_PIXELS"][0]; pixel_id++) {
-            crystals_pixels_secondary_thresholds[crystal_id][pixel_id] = global_config["SECONDARY_THRESHOLD"][crystal_id] / crystals_pixels_calibrations[crystal_id][pixel_id][0]; // this is to ensure that thare is at least 1 pixel in the cluster having energy larger than 10 keV + threshold
+            crystals_pixels_secondary_thresholds[crystal_id][pixel_id] = crystals_pixels_thresholds[crystal_id][pixel_id] + global_config["SECONDARY_THRESHOLD"][crystal_id] / crystals_pixels_calibrations[crystal_id][pixel_id][0]; // this is to ensure that thare is at least 1 pixel in the cluster having energy larger than basic threshold + secondary threshold
         }
     }
-
-    // std::cout << "Finished reading calibration and threshold files." << std::endl;
-    // std::cout << crystals_pixels_secondary_thresholds[0][0] << std::endl;
 
 
     // since the clusters can be very large. we need to use append mode to write them into files.
     for (int crystal_id = 0; crystal_id < global_config["N_CRYSTALS"][0]; crystal_id++) {
         if (crystals_calibration_files[crystal_id] == "skip") continue;
-        for (int pixel_n = 0; pixel_n < 10; pixel_n++) {
+        for (int pixel_n = 1; pixel_n <= global_config["MAX_EVENT_PIXELS"][0]; pixel_n++) {
             std::string cluster_file = format_string("{}\\clusters_crystal_{}_pixel_{}.bin", crystals_cluster_folder, crystal_id, pixel_n);
             if (extended_mode)
                 cluster_file = format_string("{}\\clusters_crystal_{}_pixel_{}_extended.bin", crystals_cluster_folder, crystal_id, pixel_n);
@@ -278,23 +284,25 @@ int raw2clusters(const std::vector<std::string> rawfiles, const std::string crys
                 const uint16_t* frames_ptr = crystals_frames_images.data() + (static_cast<size_t>(crystal_id) * max_frames) * n_pixels;
 
                 // flatten calibration coefficients for faster access
-                std::vector<float> calib0(n_pixels), calib1(n_pixels);
+                std::vector<float> pixels_slopes(n_pixels), pixels_offsets(n_pixels);
                 for (int p = 0; p < n_pixels; ++p) {
-                    calib0[p] = crystals_pixels_calibrations[crystal_id][p][0];
-                    calib1[p] = crystals_pixels_calibrations[crystal_id][p][1];
+                    pixels_slopes[p] = crystals_pixels_calibrations[crystal_id][p][0];
+                    pixels_offsets[p] = crystals_pixels_calibrations[crystal_id][p][1];
                 }
 
                 std::vector<Cluster> file_crystal_clusters = read_frames_images_to_clusters(
-                    frames_ptr, frames_in_chunk, calib0.data(), calib1.data(),
+                    frames_ptr, frames_in_chunk, pixels_slopes.data(), pixels_offsets.data(),
                     crystals_pixels_isvalids[crystal_id].data(), crystals_pixels_thresholds[crystal_id].data(),
                     crystals_pixels_secondary_thresholds[crystal_id].data(), start_frame_id, extended_mode);
                 crystals_clusters[crystal_id].insert(crystals_clusters[crystal_id].end(), file_crystal_clusters.begin(), file_crystal_clusters.end());
+
+                std::cout << format_string("Finish clustering crystal {} from file {}, frames {} to {}, Events per frames={} ...", crystal_id, rawfile, start_frame_id, end_frame_id, file_crystal_clusters.size() / frames_in_chunk) << std::endl;
             }
 
             for (int crystal_id = 0; crystal_id < global_config["N_CRYSTALS"][0]; crystal_id++) {
                 if (crystals_calibration_files[crystal_id] == "skip") continue;
                 std::string cluster_file = format_string("{}\\clusters_crystal_{}.bin", crystals_cluster_folder, crystal_id);
-                for (int pixel_n = 1; pixel_n <= 9; pixel_n++) {
+                for (int pixel_n = 1; pixel_n <= global_config["MAX_EVENT_PIXELS"][0]; pixel_n++) {
                     std::string cluster_file = format_string("{}\\clusters_crystal_{}_pixel_{}.bin", crystals_cluster_folder, crystal_id, pixel_n);
                     if (extended_mode)
                         cluster_file = format_string("{}\\clusters_crystal_{}_pixel_{}_extended.bin", crystals_cluster_folder, crystal_id, pixel_n);

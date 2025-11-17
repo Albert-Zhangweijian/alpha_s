@@ -131,6 +131,7 @@ class InteractiveCrystalChecker:
         if self.if_view_scatters:
             self.view_pixels_scatters(row, col, crystal_i)
 
+
         self.update_plot()
 
     def view_pixels_spectrum(self, row, col, crystal_id):

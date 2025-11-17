@@ -1,9 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.optimize as opt
-import warnings
+
 from scipy.special import erf
 from scipy.optimize import approx_fprime
+
+import warnings
 warnings.filterwarnings("ignore", message="delta_grad == 0.0.*")
 
 def gaussian(x, pos, height, sigma):
@@ -87,7 +89,8 @@ def fit_peaks(bins, spectrum, peak_index, fit_range_left, fit_range_right, smoot
     objective = lambda params: np.sum((partial_spectrum - model_function(partial_bins, *(params*(upper_bounds - lower_bounds)  / 1000 + lower_bounds)))**2) + penalty(params*(upper_bounds - lower_bounds) / 1000 + lower_bounds)
     bounds = opt.Bounds([1e-5]*len(lower_bounds), [1000-1e-5]*len(upper_bounds))
 
-    result = opt.minimize(objective, normalized_initial_guess, bounds=bounds, method='COBYLA', options={'maxiter': 5000, 'disp': False, 'xtol': 1e-22, 'gtol': 1e-12}, constraints=constraints)
+    result = opt.minimize(objective, normalized_initial_guess, bounds=bounds, method='COBYLA', options={'maxiter': 5000, 'disp': False, 'xtol': 1e-12, 'gtol': 1e-8}, constraints=constraints)
+    # result = opt.minimize(objective, normalized_initial_guess, bounds=bounds, method='COBYLA', options={'maxiter': 5000, 'disp': False, 'xtol': 1e-22, 'gtol': 1e-12}, constraints=constraints)
     fitted_params = result.x / 1000 * (upper_bounds - lower_bounds) + lower_bounds
 
     # In principle, there should always be a result
@@ -131,13 +134,15 @@ def fit_peaks(bins, spectrum, peak_index, fit_range_left, fit_range_right, smoot
         plt.grid()
         # plt.show()
 
-    return fitted_params
+    return fitted_params, objective(result.x)
 
 if __name__ == "__main__":
 
     import h5py
     
-    from find_peaks import find_peaks
+    import os, sys
+    sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+    from lib.find_peaks import find_peaks
 
     n_peaks = 1
     spectra_file = r"H:\alpha_spect_mini\20241120_EneCalib_Co57_150fps_-500V_7hrs\panel_1\crystals_spectra\pixels_spectra_crystal_0.h5"

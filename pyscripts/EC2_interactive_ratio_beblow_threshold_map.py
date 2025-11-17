@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 import h5py
-from interactive_map import *
+from pyscripts.lib.interactive_map import *
 
 """
 This script is to check the percentage of counts below the threshold for each pixel.

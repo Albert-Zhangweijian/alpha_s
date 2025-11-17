@@ -31,8 +31,13 @@ int raw2scatters(const std::vector<std::string>& rawfiles, const std::string cry
     // select pixels to check
     std::vector<std::vector<int>> crystals_target_ids(global_config["N_CRYSTALS"][0]);
     for (int crystal_id = 0; crystal_id < global_config["N_CRYSTALS"][0]; crystal_id++) {
+        if (crystals_calibration_files[crystal_id] == "skip") continue;
         for (int pixel_id = 0; pixel_id < global_config["N_PIXELS"][0]; pixel_id++) {
+            int row = pixel_id / global_config["N_COLS"][0];
+            int col = pixel_id % global_config["N_COLS"][0];
             if (process_type == "all")
+                crystals_target_ids[crystal_id].push_back(pixel_id);
+            else if (process_type == "all-stride" && (row % 5 == 0 && col % 5 == 0)) // if type is all-stride, then select 4% of pixels by stride
                 crystals_target_ids[crystal_id].push_back(pixel_id);
             else if (process_type == "all-random" && (rand() % 100 < 5)) // if type is all-random, then randomly select 5% of pixels
                 crystals_target_ids[crystal_id].push_back(pixel_id);
@@ -42,7 +47,6 @@ int raw2scatters(const std::vector<std::string>& rawfiles, const std::string cry
                 crystals_target_ids[crystal_id].push_back(pixel_id);
         }
     }
-
 
     // create the folder and open each file
     if (!std::filesystem::exists(crystals_scatters_folder))

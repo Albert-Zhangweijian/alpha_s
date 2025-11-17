@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
-def calculate_threshold(bins, pixels_spectra, percentile=0.99, verbose=False):
+def calculate_thresholds(bins, pixels_spectra, percentile=0.99, verbose=False):
     """
     Calculate the threshold for each pixel based on the given percentile of its spectrum.
 
@@ -51,4 +51,4 @@ if __name__ == "__main__":
         bins = f['bins'][:]
         pixels_spectra = f['pixels_spectra'][:]
 
-    pixels_thresholds = calculate_threshold(bins, pixels_spectra, percentile=0.99, verbose=True)
+    pixels_thresholds = calculate_thresholds(bins, pixels_spectra, percentile=0.99, verbose=True)
